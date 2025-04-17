@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+[ -z "$BASH_VERSION" ] && exec bash "$0"
+set -euo pipefail
+IFS=$'\n\t'
+
+# Utility Functions
+
+is_command_installed() {
+  command -v "$1" &>/dev/null
+}
+
+install_brew_formula() {
+  local formula="$1"
+  if ! is_command_installed "$2"; then
+    echo "Installing $formula..."
+    brew install "$formula"
+  else
+    echo "$formula is already installed."
+  fi
+}
+
+install_brew_cask() {
+  local cask="$1"
+  if ! is_command_installed "$2"; then
+    echo "Installing $cask..."
+    brew install --cask "$cask"
+  else
+    echo "$cask is already installed."
+  fi
+}
+
+add_line_to_zshrc() {
+  local line="$1"
+  if ! grep -Fq "$line" "$HOME/.zshrc"; then
+    echo "$line" >> "$HOME/.zshrc"
+  fi
+}
+
+download_file() {
+  local url="$1"
+  local dest="$2"
+  echo "Downloading from $url..."
+  curl -fsSL "$url" -o "$dest"
+}
+
+# Begin Script
+
+# Ensure script is only run on macOS.
+if [[ "$(uname)" != "Darwin" ]]; then
+  echo "This script is designed for macOS."
+  exit 1
+fi
+
+echo "Starting installation..."
+
+# 1. Install Homebrew if it's missing.
+if ! is_command_installed brew; then
+  echo "Installing Homebrew..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+else
+  echo "Homebrew is already installed."
+fi
+
+# 2. Set default shell to zsh if not already.
+if [[ "$SHELL" != "$(which zsh)" && "$SHELL" != "/bin/zsh" ]]; then
+  echo "Changing default shell to zsh..."
+  if ! grep -Fxq "$(which zsh)" /etc/shells; then
+    echo "Adding $(which zsh) to /etc/shells..."
+    sudo sh -c "echo $(which zsh) >> /etc/shells"
+  fi
+  chsh -s "$(which zsh)"
+fi
+
+# 3. Install Oh My Zsh.
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+  echo "Installing Oh My Zsh..."
+  RUNZSH=no KEEP_ZSHRC=yes sh -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+else
+  echo "Oh My Zsh is already installed."
+fi
+
+# 4. Install brew formulas.
+formulas=("make" "volta" "neovim" "go" "rust" "tmux" "pnpm" "luarocks" "ripgrep")
+commands=("make" "volta" "nvim" "go" "cargo" "tmux" "pnpm" "luarocks" "rg")
+
+for i in "${!formulas[@]}"; do
+  install_brew_formula "${formulas[$i]}" "${commands[$i]}"
+done
+
+# 5. Install brew casks.
+install_brew_cask "Docker" "docker"
+install_brew_cask "Ghostty Terminal" "ghostty"
+
+# 6. Install tmux-sessionizer.
+if ! is_command_installed tmux-sessionizer; then
+  echo "Installing tmux-sessionizer..."
+  brew install tmux-sessionizer
+else
+  echo "tmux-sessionizer is already installed."
+fi
+
+# 7. Install vim-plug for Neovim.
+plug_file="$HOME/.local/share/nvim/site/autoload/plug.vim"
+if [ ! -f "$plug_file" ]; then
+  echo "Installing vim-plug for Neovim..."
+  mkdir -p "$(dirname "$plug_file")"
+  curl -fLo "$plug_file" --create-dirs \
+       https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+else
+  echo "vim-plug is already installed."
+fi
+
+# 8. Create directories for Zsh plugins.
+sudo mkdir -p /opt/homebrew/share/zsh-autosuggestions \
+             /opt/homebrew/share/zsh-syntax-highlighting \
+             /opt/homebrew/share/powerlevel10k
+
+# 9. Download Zsh plugins and theme.
+download_file "https://raw.githubusercontent.com/zsh-users/zsh-autosuggestions/master/zsh-autosuggestions.zsh" \
+              "/opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+download_file "https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/zsh-syntax-highlighting.zsh" \
+              "/opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+download_file "https://raw.githubusercontent.com/romkatv/powerlevel10k/master/powerlevel10k.zsh-theme" \
+              "/opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme"
+
+# 10. Append plugin source lines to ~/.zshrc if not already present.
+add_line_to_zshrc "source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+add_line_to_zshrc "source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+add_line_to_zshrc "source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme"
+
+# 11. Optionally copy local .zshrc if present.
+if [ -f ".zshrc" ]; then
+  echo "Copying local .zshrc to $HOME/.zshrc..."
+  cp .zshrc "$HOME/.zshrc"
+else
+  echo "Local .zshrc not found."
+fi
+
+# 12. Build Neovim from source and setup ThePrimeagen projects.
+echo "Building Neovim from source..."
+version="v0.10.2"
+if [ -n "${NVIM_VERSION:-}" ]; then
+  version="$NVIM_VERSION"
+fi
+echo "version: \"$version\""
+
+if [ ! -d "$HOME/neovim" ]; then
+  echo "Cloning Neovim repository..."
+  git clone https://github.com/neovim/neovim.git "$HOME/neovim"
+fi
+
+echo "Installing Neovim build dependencies..."
+brew install cmake gettext lua
+
+git -C "$HOME/neovim" fetch --all
+git -C "$HOME/neovim" checkout "$version"
+
+make -C "$HOME/neovim" clean
+make -C "$HOME/neovim" CMAKE_BUILD_TYPE=RelWithDebInfo
+sudo make -C "$HOME/neovim" install
+
+echo "Cloning ThePrimeagen projects..."
+mkdir -p "$HOME/personal"
+if [ ! -d "$HOME/personal/harpoon" ]; then
+  git clone https://github.com/ThePrimeagen/harpoon.git "$HOME/personal/harpoon"
+  cd "$HOME/personal/harpoon" && git fetch && git checkout harpoon2
+fi
+
+[ ! -d "$HOME/personal/vim-apm" ] && git clone https://github.com/ThePrimeagen/vim-apm.git "$HOME/personal/vim-apm"
+[ ! -d "$HOME/personal/vim-with-me" ] && git clone https://github.com/ThePrimeagen/vim-with-me.git "$HOME/personal/vim-with-me"
+[ ! -d "$HOME/personal/vim-arcade" ] && git clone https://github.com/ThePrimeagen/vim-arcade.git "$HOME/personal/vim-arcade"
+[ ! -d "$HOME/personal/caleb" ] && git clone https://github.com/ThePrimeagen/caleb.git "$HOME/personal/caleb"
+[ ! -d "$HOME/personal/plenary" ] && git clone https://github.com/nvim-lua/plenary.nvim.git "$HOME/personal/plenary"
+
+echo "Downloading and building Luarocks..."
+curl -LO https://luarocks.org/releases/luarocks-3.11.1.tar.gz
+tar zxpf luarocks-3.11.1.tar.gz
+cd luarocks-3.11.1
+./configure && make && sudo make install
+sudo luarocks install luasocket
+luarocks install luacheck
+cd ..
+
+source ~/.zshrc # Reload Zsh configuration.
+
+echo "Installation complete."
