@@ -81,8 +81,8 @@ else
 fi
 
 # 4. Install brew formulas.
-formulas=("make" "volta" "neovim" "go" "rust" "tmux" "pnpm" "luarocks" "ripgrep")
-commands=("make" "volta" "nvim" "go" "cargo" "tmux" "pnpm" "luarocks" "rg")
+formulas=("make" "volta" "neovim" "go" "rust" "tmux" "pnpm" "luarocks" "ripgrep" "zsh-autosuggestions" "powerlevel10k" "zsh-syntax-highlighting")
+commands=("make" "volta" "nvim" "go" "cargo" "tmux" "pnpm" "luarocks" "rg" "zsh-autosuggestions" "powerlevel10k" "zsh-syntax-highlighting")
 
 for i in "${!formulas[@]}"; do
   install_brew_formula "${formulas[$i]}" "${commands[$i]}"
@@ -124,18 +124,6 @@ download_file "https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighti
 download_file "https://raw.githubusercontent.com/romkatv/powerlevel10k/master/powerlevel10k.zsh-theme" \
               "/opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme"
 
-# 10. Append plugin source lines to ~/.zshrc if not already present.
-add_line_to_zshrc "source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
-add_line_to_zshrc "source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
-add_line_to_zshrc "source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme"
-
-# 11. Optionally copy local .zshrc if present.
-if [ -f ".zshrc" ]; then
-  echo "Copying local .zshrc to $HOME/.zshrc..."
-  cp .zshrc "$HOME/.zshrc"
-else
-  echo "Local .zshrc not found."
-fi
 
 # 12. Build Neovim from source and setup ThePrimeagen projects.
 echo "Building Neovim from source..."
@@ -181,6 +169,12 @@ cd luarocks-3.11.1
 sudo luarocks install luasocket
 luarocks install luacheck
 cd ..
+if [ -f ".zshrc" ]; then
+  echo "Copying local .zshrc to $HOME/.zshrc..."
+  cp .zshrc "$HOME/.zshrc"
+else
+  echo "Local .zshrc not found."
+fi
 
 source ~/.zshrc # Reload Zsh configuration.
 
